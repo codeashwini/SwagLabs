@@ -23,31 +23,29 @@ pipeline {
 
         stage('Install Python') {
             steps {
-                echo '========== Installing Python if not available =========='
+                echo '========== Checking Python installation =========='
                 script {
                     if (isUnix()) {
                         sh '''
-                            if ! command -v python &> /dev/null; then
-                                echo "Python not found. Installing Python 3.9..."
-                                apt-get update
-                                apt-get install -y python3.9 python3.9-venv python3-pip
-                            else
-                                python --version
+                            python3 --version
+                            if [ $? -ne 0 ]; then
+                                echo "ERROR: Python3 not found. Please install Python 3.9+ on the Jenkins agent."
+                                exit 1
                             fi
                         '''
                     } else {
                         bat '''
-                            python --version >nul 2>&1
+                            python --version
                             if errorlevel 1 (
-                                echo Python not found. Installing Python 3.9...
-                                powershell -Command "& {Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.9.13/python-3.9.13-amd64.exe' -OutFile 'python-installer.exe'; Start-Process 'python-installer.exe' -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1' -Wait; del python-installer.exe}"
-                            ) else (
-                                python --version
+                                echo ERROR: Python not found on this Windows agent
+                                echo Please install Python 3.9+ from https://www.python.org/downloads/ with "Add Python to PATH" checked
+                                echo Or run: choco install python39 -y ^(if Chocolatey is installed^)
+                                exit /b 1
                             )
                         '''
                     }
                 }
-                echo 'Python installation check completed'
+                echo 'Python is available'
             }
         }
 
