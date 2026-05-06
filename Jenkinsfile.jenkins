@@ -64,9 +64,8 @@ pipeline {
                         '''
                     } else {
                         bat '''
-                            call %VENV_DIR%\\Scripts\\activate.bat
-                            pylint tests/ pages/ utilities/ locators/ --exit-zero
-                            exit /b 0
+                            %VENV_DIR%\\Scripts\\pylint.exe tests/ pages/ utilities/ locators/ --exit-zero
+                            if errorlevel 1 exit /b 0
                         '''
                     }
                 }
@@ -84,8 +83,7 @@ pipeline {
                         '''
                     } else {
                         bat '''
-                            call %VENV_DIR%\\Scripts\\activate.bat
-                            pytest tests/ -v --alluredir=allure-results
+                            %VENV_DIR%\\Scripts\\pytest.exe tests/ -v --alluredir=allure-results
                         '''
                     }
                 }
@@ -102,7 +100,7 @@ pipeline {
                         '''
                     } else {
                         bat '''
-                            allure generate allure-results -o allure-report --clean
+                            %VENV_DIR%\\Scripts\\allure.exe generate allure-results -o allure-report --clean
                             if errorlevel 1 (
                                 echo Warning: Allure report generation failed
                                 exit /b 0
@@ -117,17 +115,20 @@ pipeline {
         stage('Publish Results') {
             steps {
                 echo '========== Publishing test results =========='
-                junit 'allure-results/**/*.xml'
-                publishHTML([
-                    allowMissing: false,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: 'allure-report',
-                    reportFiles: 'index.html',
-                    reportName: 'Allure Test Report'
-                ])
-                archiveArtifacts artifacts: 'allure-results/**/*,allure-report/**/*', 
-                                  allowEmptyArchive: true
+                script {
+                    junit testResults: 'allure-results/**/*.xml', 
+                          allowEmptyResults: true
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'allure-report',
+                        reportFiles: 'index.html',
+                        reportName: 'Allure Test Report'
+                    ])
+                    archiveArtifacts artifacts: 'allure-results/**/*,allure-report/**/*', 
+                                      allowEmptyArchive: true
+                }
             }
         }
     }
