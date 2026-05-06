@@ -21,6 +21,36 @@ pipeline {
             }
         }
 
+        stage('Install Python') {
+            steps {
+                echo '========== Installing Python if not available =========='
+                script {
+                    if (isUnix()) {
+                        sh '''
+                            if ! command -v python &> /dev/null; then
+                                echo "Python not found. Installing Python 3.9..."
+                                apt-get update
+                                apt-get install -y python3.9 python3.9-venv python3-pip
+                            else
+                                python --version
+                            fi
+                        '''
+                    } else {
+                        bat '''
+                            python --version >nul 2>&1
+                            if errorlevel 1 (
+                                echo Python not found. Installing Python 3.9...
+                                powershell -Command "& {Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.9.13/python-3.9.13-amd64.exe' -OutFile 'python-installer.exe'; Start-Process 'python-installer.exe' -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1' -Wait; del python-installer.exe}"
+                            ) else (
+                                python --version
+                            )
+                        '''
+                    }
+                }
+                echo 'Python installation check completed'
+            }
+        }
+
         stage('Setup Environment') {
             steps {
                 echo '========== Setting up Python environment =========='
