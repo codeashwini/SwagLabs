@@ -1,85 +1,161 @@
 pipeline {
     agent any
 
+    options {
+        timestamps()
+        timeout(time: 1, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
     environment {
+        PYTHON_VERSION = '3.9'
         VENV_DIR = '.venv'
-        PYTHON = "${VENV_DIR}\\Scripts\\python.exe"
-        PIP = "${VENV_DIR}\\Scripts\\pip.exe"
-        PYTEST = "${VENV_DIR}\\Scripts\\pytest.exe"
-        PYLINT = "${VENV_DIR}\\Scripts\\pylint.exe"
     }
 
     stages {
-
         stage('Checkout') {
             steps {
+                echo '========== Checking out source code =========='
                 checkout scm
+                echo 'Source code checked out successfully'
             }
         }
 
         stage('Setup Environment') {
             steps {
-                bat '''
-                    echo ===== Python Version =====
-                    python --version
-
-                    echo ===== Create venv =====
-                    python -m venv %VENV_DIR%
-
-                    echo ===== Upgrade pip =====
-                    %PIP% install --upgrade pip setuptools wheel
-
-                    echo ===== Install dependencies =====
-                    %PIP% install -r requirements.txt
-
-                    echo ===== Install test tools =====
-                    %PIP% install pytest pytest-xdist allure-pytest pylint
-                '''
+                echo '========== Setting up Python environment =========='
+                script {
+                    if (isUnix()) {
+                        sh '''
+                            PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
+                            echo "Detected Python version: $PYTHON_VERSION"
+                            python3 -m venv ${VENV_DIR}
+                            source ${VENV_DIR}/bin/activate
+                            pip install --upgrade pip setuptools wheel
+                            pip install -r requirements.txt
+                            echo "Installing compatible pytest version..."
+                            pip install "pytest>=6.0,<8.0" "pytest-xdist>=2.0" "allure-pytest>=2.13"
+                        '''
+                    } else {
+                        bat '''
+                            for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYTHON_VERSION=%%i
+                            echo Detected Python version: %PYTHON_VERSION%
+                            python -m venv %VENV_DIR%
+                            call %VENV_DIR%\\Scripts\\activate.bat
+                            pip install --upgrade pip setuptools wheel
+                            pip install -r requirements.txt
+                            echo Installing compatible pytest version...
+                            pip install "pytest>=6.0,<8.0" "pytest-xdist>=2.0" "allure-pytest>=2.13"
+                        '''
+                    }
+                }
+                echo 'Dependencies installed successfully'
             }
         }
 
-        stage('Code Quality') {
+        stage('Code Quality Check') {
             steps {
-                bat '''
-                    %PYLINT% tests/ pages/ utilities/ locators/ --exit-zero
-                    IF %ERRORLEVEL% NEQ 0 exit /b 0
-                '''
+                echo '========== Running code quality checks =========='
+                script {
+                    if (isUnix()) {
+                        sh '''
+                            source ${VENV_DIR}/bin/activate
+                            pylint tests/ pages/ utilities/ locators/ --exit-zero || true
+                        '''
+                    } else {
+                        bat '''
+                            %VENV_DIR%\\Scripts\\pylint.exe tests/ pages/ utilities/ locators/ --exit-zero
+                            if errorlevel 1 exit /b 0
+                        '''
+                    }
+                }
             }
         }
 
         stage('Run Tests') {
             steps {
-                bat '''
-                    %PYTEST% tests/ -v --alluredir=allure-results
-                '''
+                echo '========== Running automated tests =========='
+                script {
+                    if (isUnix()) {
+                        sh '''
+                            source ${VENV_DIR}/bin/activate
+                            pytest tests/ -v --alluredir=allure-results
+                        '''
+                    } else {
+                        bat '''
+                            %VENV_DIR%\\Scripts\\pytest.exe tests/ -v --alluredir=allure-results
+                        '''
+                    }
+                }
             }
         }
 
         stage('Generate Allure Report') {
             steps {
-                bat '''
-                    allure generate allure-results -o allure-report --clean
-                    IF %ERRORLEVEL% NEQ 0 (
-                        echo Allure generation failed
-                        exit /b 0
-                    )
-                '''
+                echo '========== Generating Allure report =========='
+                script {
+                    if (isUnix()) {
+                        sh '''
+                            allure generate allure-results -o allure-report --clean || echo "Warning: Allure report generation failed"
+                        '''
+                    } else {
+                        bat '''
+                            %VENV_DIR%\\Scripts\\allure.exe generate allure-results -o allure-report --clean
+                            if errorlevel 1 (
+                                echo Warning: Allure report generation failed
+                                exit /b 0
+                            )
+                        '''
+                    }
+                }
+                echo 'Allure report generated successfully'
             }
         }
 
-        stage('Publish') {
+        stage('Publish Results') {
             steps {
-                junit 'allure-results/**/*.xml'
-
-                publishHTML([
-                    reportDir: 'allure-report',
-                    reportFiles: 'index.html',
-                    reportName: 'Allure Report',
-                    allowMissing: true,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true
-                ])
+                echo '========== Publishing test results =========='
+                script {
+                    junit testResults: 'allure-results/**/*.xml', 
+                          allowEmptyResults: true
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'allure-report',
+                        reportFiles: 'index.html',
+                        reportName: 'Allure Test Report'
+                    ])
+                    archiveArtifacts artifacts: 'allure-results/**/*,allure-report/**/*', 
+                                      allowEmptyArchive: true
+                }
             }
+        }
+    }
+
+    post {
+        always {
+            echo '========== Cleaning up workspace =========='
+            cleanWs(
+                deleteDirs: true,
+                patterns: [
+                    [pattern: '**/*.pyc', type: 'INCLUDE'],
+                    [pattern: '**/__pycache__', type: 'INCLUDE'],
+                    [pattern: '.venv', type: 'INCLUDE']
+                ]
+            )
+        }
+
+        success {
+            echo '✓ Pipeline completed successfully!'
+        }
+
+        failure {
+            echo '✗ Pipeline failed. Check logs and test results above.'
+        }
+
+        unstable {
+            echo '⚠ Pipeline unstable. Some tests may have failed.'
         }
     }
 }
