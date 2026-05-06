@@ -21,51 +21,31 @@ pipeline {
             }
         }
 
-        stage('Install Python') {
-            steps {
-                echo '========== Checking Python installation =========='
-                script {
-                    if (isUnix()) {
-                        sh '''
-                            python3 --version
-                            if [ $? -ne 0 ]; then
-                                echo "ERROR: Python3 not found. Please install Python 3.9+ on the Jenkins agent."
-                                exit 1
-                            fi
-                        '''
-                    } else {
-                        bat '''
-                            python --version
-                            if errorlevel 1 (
-                                echo ERROR: Python not found on this Windows agent
-                                echo Please install Python 3.9+ from https://www.python.org/downloads/ with "Add Python to PATH" checked
-                                echo Or run: choco install python39 -y ^(if Chocolatey is installed^)
-                                exit /b 1
-                            )
-                        '''
-                    }
-                }
-                echo 'Python is available'
-            }
-        }
-
         stage('Setup Environment') {
             steps {
                 echo '========== Setting up Python environment =========='
                 script {
                     if (isUnix()) {
                         sh '''
-                            python -m venv ${VENV_DIR}
+                            PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
+                            echo "Detected Python version: $PYTHON_VERSION"
+                            python3 -m venv ${VENV_DIR}
                             source ${VENV_DIR}/bin/activate
-                            pip install --upgrade pip
+                            pip install --upgrade pip setuptools wheel
                             pip install -r requirements.txt
+                            echo "Installing compatible pytest version..."
+                            pip install "pytest>=6.0,<8.0" "pytest-xdist>=2.0" "allure-pytest>=2.13"
                         '''
                     } else {
                         bat '''
+                            for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYTHON_VERSION=%%i
+                            echo Detected Python version: %PYTHON_VERSION%
                             python -m venv %VENV_DIR%
                             call %VENV_DIR%\\Scripts\\activate.bat
-                            pip install --upgrade pip
+                            pip install --upgrade pip setuptools wheel
                             pip install -r requirements.txt
+                            echo Installing compatible pytest version...
+                            pip install "pytest>=6.0,^<8.0" "pytest-xdist>=2.0" "allure-pytest>=2.13"
                         '''
                     }
                 }
