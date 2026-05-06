@@ -29,4 +29,4 @@ def test_invalid_login(driver):
     login_page = LoginPage(driver)
     login_page.login("wrong_user", "secret_sauce")
     
-    assert "Epic Sadface" in login_page.get_error_message()
+    assert "Epic sadface" in login_page.get_error_message()
