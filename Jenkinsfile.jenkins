@@ -98,11 +98,15 @@ pipeline {
                 script {
                     if (isUnix()) {
                         sh '''
-                            allure generate allure-results -o allure-report --clean
+                            allure generate allure-results -o allure-report --clean || echo "Warning: Allure report generation failed"
                         '''
                     } else {
                         bat '''
                             allure generate allure-results -o allure-report --clean
+                            if errorlevel 1 (
+                                echo Warning: Allure report generation failed
+                                exit /b 0
+                            )
                         '''
                     }
                 }
