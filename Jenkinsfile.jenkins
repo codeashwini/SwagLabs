@@ -65,7 +65,8 @@ pipeline {
                     } else {
                         bat '''
                             call %VENV_DIR%\\Scripts\\activate.bat
-                            pylint tests/ pages/ utilities/ locators/ --exit-zero || true
+                            pylint tests/ pages/ utilities/ locators/ --exit-zero
+                            exit /b 0
                         '''
                     }
                 }
